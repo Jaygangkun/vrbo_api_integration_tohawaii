@@ -1,6 +1,30 @@
 <?php
+date_default_timezone_set('Asia/Shanghai');
+
+function writeLog($log) {
+    
+    if (!file_exists('logs/')) {
+        mkdir('logs/' , 0777, true);   
+    }
+
+    $fp = fopen('logs/log.txt', 'a');
+    
+    fwrite($fp, date('y-m-j h:i:s       ').$log.PHP_EOL);  
+    fclose($fp);  
+}
+
+function rmdir_recursive($dir) {
+    foreach(scandir($dir) as $file) {
+        if ('.' === $file || '..' === $file) continue;
+        if (is_dir("$dir/$file")) rmdir_recursive("$dir/$file");
+        else unlink("$dir/$file");
+    }
+    rmdir($dir);
+}
+
 // file download
 function downloadFile($type) {
+    writeLog('start downloadFile ===== '.$type);
     $curl = curl_init();
 
     curl_setopt_array($curl, array(
@@ -22,7 +46,6 @@ function downloadFile($type) {
     $response = curl_exec($curl);
     
     curl_close($curl);
-    // echo $response;
     
     $download_url = '';
     
@@ -46,10 +69,12 @@ function downloadFile($type) {
     // save the file by using base name
     if (file_put_contents($file_name, file_get_contents($download_url)))
     {
+        writeLog('success downloadFile >>>>> '.$type);
         return $file_name;
     }
     else
     {
+        writeLog('fail downloadFile <<<<< '.$type);
         return false;
     }
     
@@ -57,11 +82,12 @@ function downloadFile($type) {
 
 function unZipDownloadFile($file_name, $type) {
     // $file_name = 'download.zip';
+    writeLog('start unZipDownloadFile ===== '.$file_name.', '.$type);
 
     $dir_name = 'download-'.$type.'/';
 
     if (file_exists($dir_name)) {
-        rmdir($dir_name);
+        rmdir_recursive($dir_name);
     }
 
     mkdir($dir_name , 0777, true);
@@ -74,14 +100,17 @@ function unZipDownloadFile($file_name, $type) {
         // Unzip Path
         $zip->extractTo($dir_name);
         $zip->close();
-        
+        writeLog('success unZipDownloadFile >>>>> '.$file_name.', '.$type);
         return $dir_name;
     } else {
+        writeLog('fail unZipDownloadFile <<<<< '.$file_name.', '.$type);
         return false;
     }
 }
 
 function processDownloadFile($file_name, $type) {
+
+    writeLog('start processDownloadFile ===== '.$file_name.', '.$type);
 
     global $dbcon;
 
@@ -90,8 +119,8 @@ function processDownloadFile($file_name, $type) {
         'uniturl' => '', /**from vacationrental */
         'bathrooms' => '', /**from vacationrental */
         'bedrooms' => '', /**from vacationrental */
-        'sleeps' => '',
-        'href' => '',
+        'sleeps' => '', /**from vacationrental */
+        'href' => '', /**from quotes api */
         'thumbnailUrl' => '', /**from images */
         'headline' => '', /**from summary */
         'description' => '', /**from descriptions */
@@ -106,7 +135,7 @@ function processDownloadFile($file_name, $type) {
         'suitability' => '', /**empty */
         'features' => '', /**empty */
         'address' => '', /**from summary */
-        'price' => '',
+        'price' => '', /**from quotes api */
         'minimum_nights' => '',
         'rating' => '', /**from guestreviews */
         'review_count' => '', /**from guestreviews */
@@ -148,18 +177,22 @@ function processDownloadFile($file_name, $type) {
                 if(isset($data_json['propertyRegistryNumber'])) {
                     $db_index_fields['registration_number'] = mysqli_real_escape_string($dbcon, $data_json['propertyRegistryNumber']);
                 }
+
+                if(isset($data_json['maxOccupancy'])) {
+                    $db_index_fields['sleeps'] = mysqli_real_escape_string($dbcon, $data_json['maxOccupancy']);
+                }
     
                 $sql_check_url = "SELECT * FROM `vacationrentalindex` WHERE `uniturl`='".$db_index_fields['uniturl']."' LIMIT 1";
     
                 $res_check_url = $dbcon->query($sql_check_url);
     
                 if($res_check_url && $res_check_url->num_rows > 0) {
-                    $sql_update = "UPDATE `vacationrentalindex` SET `bathrooms`='".$db_index_fields['bathrooms']."', `bedrooms`='".$db_index_fields['bedrooms']."', `registration_number`='".$db_index_fields['registration_number']."' WHERE `uniturl`='".$db_index_fields['uniturl']."'";
+                    $sql_update = "UPDATE `vacationrentalindex` SET `bathrooms`='".$db_index_fields['bathrooms']."', `bedrooms`='".$db_index_fields['bedrooms']."', `registration_number`='".$db_index_fields['registration_number']."', `sleeps`='".$db_index_fields['sleeps']."' WHERE `uniturl`='".$db_index_fields['uniturl']."'";
     
                     mysqli_query($dbcon, $sql_update);// or die(mysqli_error($con)) ; 
                 }
                 else {
-                    $sql_insert = "INSERT INTO `vacationrentalindex`(`uniturl`, `bathrooms`, `bedrooms`, `registration_number`) VALUES ('".$db_index_fields["uniturl"]."', '".$db_index_fields["bathrooms"]."', '".$db_index_fields["bedrooms"]."', '".$db_index_fields["registration_number"]."');";
+                    $sql_insert = "INSERT INTO `vacationrentalindex`(`uniturl`, `bathrooms`, `bedrooms`, `registration_number`, `sleeps`, `apiversion`) VALUES ('".$db_index_fields["uniturl"]."', '".$db_index_fields["bathrooms"]."', '".$db_index_fields["bedrooms"]."', '".$db_index_fields["registration_number"]."', '".$db_index_fields["sleeps"]."', 1);";
     
                     mysqli_query($dbcon, $sql_insert);// or die(mysqli_error($con)) ; 
                 }
@@ -226,7 +259,7 @@ function processDownloadFile($file_name, $type) {
                     mysqli_query($dbcon, $sql_update);// or die(mysqli_error($con)) ; 
                 }
                 else {
-                    $sql_insert = "INSERT INTO `vacationrentalindex`(`uniturl`, `headline`, `propertyName`, `state`, `city`, `country`, `property_type`, `lastModified`, `address`, `latitude`, `longitude`, `postalCode`) VALUES ('".$db_index_fields["uniturl"]."', '".$db_index_fields["headline"]."', '".$db_index_fields["propertyName"]."', '".$db_index_fields["state"]."', '".$db_index_fields["city"]."', '".$db_index_fields["country"]."', '".$db_index_fields["property_type"]."', '".$db_index_fields["lastModified"]."', '".$db_index_fields["address"]."', '".$db_index_fields["latitude"]."', '".$db_index_fields["longitude"]."', '".$db_index_fields["postalCode"]."');";
+                    $sql_insert = "INSERT INTO `vacationrentalindex`(`uniturl`, `headline`, `propertyName`, `state`, `city`, `country`, `property_type`, `lastModified`, `address`, `latitude`, `longitude`, `postalCode`, `apiversion`) VALUES ('".$db_index_fields["uniturl"]."', '".$db_index_fields["headline"]."', '".$db_index_fields["propertyName"]."', '".$db_index_fields["state"]."', '".$db_index_fields["city"]."', '".$db_index_fields["country"]."', '".$db_index_fields["property_type"]."', '".$db_index_fields["lastModified"]."', '".$db_index_fields["address"]."', '".$db_index_fields["latitude"]."', '".$db_index_fields["longitude"]."', '".$db_index_fields["postalCode"]."', 1);";
     
                     mysqli_query($dbcon, $sql_insert);// or die(mysqli_error($con)) ; 
                 }
@@ -253,7 +286,7 @@ function processDownloadFile($file_name, $type) {
                     mysqli_query($dbcon, $sql_update);// or die(mysqli_error($con)) ; 
                 }
                 else {
-                    $sql_insert = "INSERT INTO `vacationrentalindex`(`uniturl`, `description`) VALUES ('".$db_index_fields["uniturl"]."', '".$db_index_fields["description"]."');";
+                    $sql_insert = "INSERT INTO `vacationrentalindex`(`uniturl`, `description`, `apiversion`) VALUES ('".$db_index_fields["uniturl"]."', '".$db_index_fields["description"]."', 1);";
     
                     mysqli_query($dbcon, $sql_insert);// or die(mysqli_error($con)) ; 
                 }
@@ -283,13 +316,11 @@ function processDownloadFile($file_name, $type) {
                     $sql_update = "UPDATE `vacationrentalindex` SET `thumbnailUrl`='".$db_index_fields['thumbnailUrl']."' WHERE `uniturl`='".$db_index_fields['uniturl']."'";
     
                     mysqli_query($dbcon, $sql_update);// or die(mysqli_error($con)) ; 
-                    echo $sql_update;die();
                 }
                 else {
-                    $sql_insert = "INSERT INTO `vacationrentalindex`(`uniturl`, `thumbnailUrl`) VALUES ('".$db_index_fields["uniturl"]."', '".$db_index_fields["thumbnailUrl"]."');";
+                    $sql_insert = "INSERT INTO `vacationrentalindex`(`uniturl`, `thumbnailUrl`, `apiversion`) VALUES ('".$db_index_fields["uniturl"]."', '".$db_index_fields["thumbnailUrl"]."', 1);";
     
                     mysqli_query($dbcon, $sql_insert);// or die(mysqli_error($con)) ; 
-                    echo $sql_insert;die();
                 }
 
                 $count ++;
@@ -315,28 +346,28 @@ function processDownloadFile($file_name, $type) {
                     mysqli_query($dbcon, $sql_update);// or die(mysqli_error($con)) ; 
                 }
                 else {
-                    $sql_insert = "INSERT INTO `vacationrentalindex`(`uniturl`, `rating`, `review_count`) VALUES ('".$db_index_fields["uniturl"]."', '".$db_index_fields["rating"]."', '".$db_index_fields["review_count"]."');";
+                    $sql_insert = "INSERT INTO `vacationrentalindex`(`uniturl`, `rating`, `review_count`, `apiversion`) VALUES ('".$db_index_fields["uniturl"]."', '".$db_index_fields["rating"]."', '".$db_index_fields["review_count"]."', 1);";
     
                     mysqli_query($dbcon, $sql_insert);// or die(mysqli_error($con)) ; 
                 }
 
                 $count ++;
             }
-
-            if($count > 1000) {
-                break;
-            }
         }
 
         fclose($file);
 
+        writeLog('success processDownloadFile >>>>> '.$file_name.', '.$type);
         return $count;
     }   
 
+    writeLog('fail processDownloadFile >>>>> '.$file_name.', '.$type);
     return null;
 }
 
-function getQuote($propertyIds, $checkIn, $checkOut) {
+function getQuotes($propertyIds, $checkIn, $checkOut) {
+
+    writeLog('start getQuotes ===== '.$propertyIds.', '.$checkIn.', '.$checkOut);
 
     $curl = curl_init();
 
@@ -363,35 +394,12 @@ function getQuote($propertyIds, $checkIn, $checkOut) {
 
     $res_data = json_decode($response, true);
 
-    $ret_data = array(
-        'price' => '',
-        'href' => ''
-    );
-
     if(isset($res_data['Properties']) && count($res_data['Properties']) > 0) {
-        $property_data = $res_data['Properties'][0];
-        if($property_data['Status'] == 'AVAILABLE') {
-            foreach($property_data['RoomTypes'] as $roomType) {
-                $price = '';
-                $link = '';
-
-                if(isset($roomType['Price'])) {
-                    $price = $roomType['Price']['BaseRate']['Value'];
-                }
-
-                if(isset($roomType['Links'])) {
-                    $link = $roomType['Links']['WebDetails']['Href'];
-                }
-
-                if($price != '' && $link != '') {
-                    $ret_data['price'] = $price;
-                    $ret_data['href'] = $href;
-
-                    break;
-                }
-            }
-        }
+        writeLog('success getQuotes >>>>> '.$propertyIds.', '.$checkIn.', '.$checkOut);
+        return $res_data['Properties'];
     }
-
-    return $ret_data;
+    else {
+        writeLog('fail getQuotes <<<<< '.$propertyIds.', '.$checkIn.', '.$checkOut);
+        return null;
+    }
 }

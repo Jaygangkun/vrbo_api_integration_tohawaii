@@ -16,22 +16,58 @@ $res_all = $dbcon->query($sql_all);
 
 if($res_all) {
     $count = 0;
+    $propertyIdsGroup = array();
     while($row = $res_all->fetch_assoc()){
-        echo $row['uniturl'];
-        $propertyIds = $row['uniturl'];
-        $quote_data = getQuote($propertyIds, $checkIn, $checkOut);
-
-        if($quote_data['href'] != '' || $quote_data['price'] != '') {
-            echo ": updated";
-            $sql_update = "UPDATE `vacationrentalindex` SET `href`='".$quote_data['href']."', `price`='".$quote_data['price']."' WHERE `uniturl`='".$row['uniturl']."'";
-
-            mysqli_query($dbcon, $sql_update);// or die(mysqli_error($con)) ; 
-        }
-        echo "<br>";
-
+        $propertyIds .= $row['uniturl'].",";
         $count++;
-        if($count > 100) {
-            die();
+        if($count > 500) {
+            $propertyIdsGroup[] = $propertyIds;
+
+            $propertyIds = '';
+            $count = 0;
         }
     }
+
+    if($count != 0) {
+        $propertyIdsGroup[] = $propertyIds;
+    }
+
+    foreach($propertyIdsGroup as $propertyIds) {
+
+        $quotes_data = getQuotes($propertyIds, $checkIn, $checkOut);
+        
+        if($quotes_data) {
+            foreach($quotes_data as $quote_data) {
+                $property_data = $quote_data;
+                if($property_data['Status'] == 'AVAILABLE') {
+                    $price = '';
+                    $link = '';
+                    foreach($property_data['RoomTypes'] as $roomType) {
+        
+                        $price = '';
+                        $link = '';
+        
+                        if(isset($roomType['Price']) && isset($roomType['Price']['BaseRate'])) {
+                            $price = $roomType['Price']['BaseRate']['Value'];
+                        }
+        
+                        if(isset($roomType['Links']) && isset($roomType['Links']['WebDetails'])) {
+                            $link = $roomType['Links']['WebDetails']['Href'];
+                        }
+        
+                        if($price != '' && $link != '') {        
+                            break;
+                        }
+                    }
+        
+                    if($link != '' || $price != '') {
+                        $sql_update = "UPDATE `vacationrentalindex` SET `href`='".$link."', `price`='".$price."' WHERE `uniturl`='".$property_data['Id']."'";
+                
+                        mysqli_query($dbcon, $sql_update);// or die(mysqli_error($con)) ; 
+                    }
+                }
+            }
+        }
+    }
+    
 }

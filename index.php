@@ -3,19 +3,20 @@ include('./config.php');
 include('./db.php');
 include('./functions.php');
 
-$type = 'vacationrental';
+writeLog('process1');die();
+// $type = 'vacationrental';
 $type = 'summary';
 // $type = 'descriptions';
 // $type = 'images';
-$type = 'reviews';
+// $type = 'reviews';
 // $download_file = downloadFile($type);
 
-$download_file = 'images.zip';
+$download_file = 'summary.zip';
 
 if($download_file) {
     // $unzip_dir = unZipDownloadFile($download_file, $type);
-    $unzip_dir = 'download-reviews/';
-    if($unzip_dir){
+    $unzip_dir = 'download-summary/';
+    if($unzip_dir && file_exists($unzip_dir)) {
         $download_files = array_diff(scandir($unzip_dir), array('..', '.'));
 
         // echo json_encode($scanned_directory);
